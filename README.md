@@ -36,7 +36,7 @@
 
 ### 1. Topologi Jaringan
 
-![topologi jaringan](images/01-topologi.png)
+![topologi jaringan](images/soal-1/01-topologi.png)
 
 Topologi jaringan dibuat dengan router `rootkit` yang terhubung langsung ke adapter NAT, router `rootkit` juga terhubung ke switch virtual yang menghubungkan semua entitas di jaringan internal. Semua entitas memiliki IP statis yang sudah dikonfigurasi sebelumnya.
 
@@ -125,7 +125,7 @@ Switch 2 dan Switch 3 hanya meneruskan paket dari Switch 1 sehingga sama-sama me
 - Gateway: 10.67.7.1
 
 #### Bukti Terkoneksi Gateway dengan Baik
-![](images/01-gateway.png)
+![](images/soal-1/01-gateway.png)
 
 ---
 
@@ -152,11 +152,11 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 ```
 
 #### Bukti Rootkit Terhubung ke Internet
-![](images/02-rootkit.png)
+![](images//soal-2/02-rootkit.png)
 
 
 #### Bukti Klien Dapat Mengakses Internet via NAT
-![](images/02-rootkit.png)
+![](images//soal-2/02-rootkit.png)
 
 
 ---
@@ -180,11 +180,11 @@ Script ini dijalankan di seluruh 12 node non-router (alpha, beta, gamma, delta, 
 
 
 #### Bukti Routing Antar-Segmen Berfungsi
-![](images/03-routing.png)
+![](images/soal-3/03-routing.png)
 
 
 #### Bukti Resolver Berfungsi
-![](images/03-resolver.png)
+![](images/soal-3/03-resolver.png)
 
 ---
 
@@ -283,7 +283,7 @@ nameserver 192.168.122.1
 ```
 
 #### Bukti Zone Transfer Berhasil (tedd menjawab authoritative)
-![](images/04-aa-flag.png)
+![](images/soal-4/04-aa-flag.png)
 (hasil `dig @10.67.1.3 k07.com`, flag `aa` menunjukkan tedd menjawab secara authoritative)
 
 
@@ -338,10 +338,10 @@ echo "10.67.6.2 alpha.k07.com alpha" >> /etc/hosts
 Konfigurasi yang sama diulang pada 12 node lainnya (rootkit, beta, gamma, delta, epsilon, abbey, penny, obladi, desmond, oblada, molly), hanya mengganti nilai `hostname` dan pasangan IP masing-masing.
 
 #### Bukti Hostname Dikenali System-Wide
-![](images/05-hostname.png)
+![](images/soal-5/05-hostname.png)
 
 #### Bukti Resolusi DNS per Hostname
-![](images/05-domain.png)
+![](images/soal-5/05-domain.png)
 
 ---
 
@@ -828,7 +828,7 @@ Pengujian dilakukan dengan mengirim beberapa request berurutan dari node client 
 ```bash
 for i in 1 2 3 4 5 6; do curl -s http://static.k07.com/; echo; done
 ```
-![](images/11-rr.png)
+![](images//soal-11/11-rr.png)
 
 (Response bergantian antara Oblada dan Molly, membuktikan Nginx upstream mendistribusikan request secara round-robin ke kedua backend area core)
 
@@ -874,12 +874,12 @@ curl -u prabs:'pakar_pinter_jadi_gob***' -I http://www.k07.com/admin/
 
 #### Hasil Pengujian Tanpa Kredensial & dengan Kredensial
 
-![](images/12-creds.png)
+![](images/soal-12/12-creds.png)
 (Terlihat bahwa tanpa kredensial, server merespon `401 Unauthorized`, sedangkan dengan kredensial yang benar, server merespon `200 OK`.)
 
 Sehingga, dengan kredensial yang tepat, kita dapat mengakses isi content-type di dalamnya.
 
-![](images/12-tedprab.png)
+![](images/soal-12/12-tedprab.png)
 
 ---
 
@@ -934,10 +934,10 @@ menghasilkan output sebagai berikut:
 | http://static.k07.com/ | 200 |
 
 #### Bukti Redirect 301 pada Penny
-![](images/13-penny.png)
+![](images/soal-13/13-penny.png)
 
 #### Bukti Redirect 302 pada Abbey
-![](images/13-abbey.png)
+![](images/soal-13/13-abbey.png)
 ---
 
 ### 14. Pencatatan IP Asli Client pada Access Log
@@ -990,7 +990,7 @@ curl http://static.k07.com/ > /dev/null
 Dilakukan dari node gamma `(10.67.6.3)`. Kemudian diperiksa access log pada backend:
 
 #### IP tercatat di access log 
-![](images/14-client.png)
+![](images/soal-14/14-client.png)
 
 Terlihat bahwa Obladi/Desmond (`/var/log/apache2/access.log`) dan Oblada/Molly (`/var/log/nginx/access.log`) mencatat IP asli dari node gamma `(10.67.6.3)`
 
@@ -1049,13 +1049,13 @@ Blok location `~\.php$ { deny all; }` memastikan file berekstensi .php yang dile
 
 #### Verifikasi
 - **Bukti /eternal Berhasil Merender PHP**
-![](images/15-eternal.png)
+![](images/soal-15/15-eternal.png)
 
 - **Bukti /orion Statis Tanpa Rendering PHP**
-![](images/15-orion.png)
+![](images/soal-15/15-orion.png)
 
 - **Bukti bahwa file PHP di `/orion` tidak dieksekusi**
-![](images/15-403.png)
+![](images/soal-15/15-403.png)
 
 
 
