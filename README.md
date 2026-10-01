@@ -32,4 +32,100 @@
 
 ## Laporan Resmi
 
-### 1. Judul
+### 1. Topologi Jaringan
+
+![topologi jaringan](images/01-topologi.png)
+
+Topolagi jaringan dibuat dengan router `rootkit` yang terhubung langsung ke adapter NAT, router `rootkit` juga terhubung ke switch virtual yang menghubungkan semua entitas di jaringan internal. Semua entitas memiliki IP statis yang sudah dikonfigurasi sebelumnya.
+
+#### Switch 1
+- Network: 10.67.1.0/24
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+#### Switch 2
+Switch 2 dan Switch 3 hanya meneruskan paket dari Switch 1 sehingga sama-sama memiliki konfigurasi jaringan yang sama dengan Switch 1.
+
+##### Prab
+- IP: 10.67.1.2
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+##### Tedd
+- IP: 10.67.1.3
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+#### Switch 3
+Switch 2 dan Switch 3 hanya meneruskan paket dari Switch 1 sehingga sama-sama memiliki konfigurasi jaringan yang sama dengan Switch 1.
+
+##### Obladi
+- IP: 10.67.1.4
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+##### Desmond
+- IP: 10.67.1.5
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+##### Oblada
+- IP: 10.67.1.6
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+##### Molly
+- IP: 10.67.1.7
+- Netmask: 255.255.255.0
+- Gateway: 10.67.1.1
+
+#### Switch 4
+
+##### Abbey
+- IP: 10.67.4.2
+- Netmask: 255.255.255.0
+- Gateway: 10.67.4.1
+
+#### Switch 5
+
+##### Penny
+- IP: 10.67.5.2
+- Netmask: 255.255.255.0
+- Gateway: 10.67.5.1
+
+#### Switch 6
+
+##### Alpha
+- IP: 10.67.6.2
+- Netmask: 255.255.255.0
+- Gateway: 10.67.6.1
+
+##### Beta
+- IP: 10.67.6.3
+- Netmask: 255.255.255.0
+- Gateway: 10.67.6.1
+
+##### Gamma
+- IP: 10.67.6.4
+- Netmask: 255.255.255.0
+- Gateway: 10.67.6.1
+
+#### Switch 7
+
+##### Delta
+- IP: 10.67.7.2
+- Netmask: 255.255.255.0
+- Gateway: 10.67.7.1
+
+##### Epsilon
+- IP: 10.67.7.3
+- Netmask: 255.255.255.0
+- Gateway: 10.67.7.1
+
+### 2. Konfigurasi NAT
+Untuk konfigurasi NAT, router `rootkit` menggunakan iptables untuk melakukan NAT pada jaringan internal dan disimpan di `init.sh` agar konfigurasi NAT tetap aktif setelah reboot. Berikut adalah konfigurasi NAT yang digunakan:
+
+```bash
+bakekok
+
+```
