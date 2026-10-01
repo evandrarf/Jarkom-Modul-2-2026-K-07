@@ -1,0 +1,1 @@
+curl -i http://obladi.k07.com/arsip/

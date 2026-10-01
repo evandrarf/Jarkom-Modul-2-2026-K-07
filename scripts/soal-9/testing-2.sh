@@ -1,0 +1,1 @@
+curl -i http://desmond.k07.com/arsip/
