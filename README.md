@@ -124,29 +124,224 @@ Switch 2 dan Switch 3 hanya meneruskan paket dari Switch 1 sehingga sama-sama me
 - Netmask: 255.255.255.0
 - Gateway: 10.67.7.1
 
+#### Bukti Terkoneksi Gateway dengan Baik
+![](images/01-gateway.png)
+
 ---
 
 ### 2. Konfigurasi NAT
-Untuk konfigurasi NAT, router `rootkit` menggunakan iptables untuk melakukan NAT pada jaringan internal dan disimpan di `init.sh` agar konfigurasi NAT tetap aktif setelah reboot. Berikut adalah konfigurasi NAT yang digunakan:
+#### Soal
+Buka jalur menuju NAT dengan memastikan antarmuka WAN di router rootkit aktif. Konfigurasikan NAT agar dapat meneruskan lalu lintas keluar bagi seluruh alamat internal, sehingga semua host di dalam jaringan dapat menjangkau internet publik menggunakan IP address.
+
+#### Penjelasan & Konfigurasi
+Untuk konfigurasi NAT, router `rootkit` menggunakan iptables pada jaringan internal dan disimpan di `init.sh` agar konfigurasi tetap aktif setelah reboot. 
 
 ```bash
-bakekok
+# /root/init.sh (rootkit)
+#!/bin/bash
+ip link set eth0 up
+ip addr flush dev eth0
+ip addr add 192.168.122.2/24 dev eth0
+ip route replace default via 192.168.122.1
+
+command -v iptables >/dev/null || { apt update && apt install -y iptables; }
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+iptables -t nat -F
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 ```
+
+#### Bukti Rootkit Terhubung ke Internet
+![](images/02-rootkit.png)
+
+
+#### Bukti Klien Dapat Mengakses Internet via NAT
+![](images/02-rootkit.png)
+
 
 ---
 
 ### 3. Routing dan DNS Resolver
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+
+#### Soal
+Pastikan seluruh Entitas dapat saling terhubung dan berkomunikasi lintas jalur (routing internal via rootkit berfungsi). Untuk menghindari fragmentasi saat persiapan, pastikan setiap host non-router menambahkan resolver `192.168.122.1` (tambah di file /etc/resolv.conf, kalau sudah pakai resolver itu tidak perlu memasukkan resolver google) saat antarmukanya aktif agar akses untuk mengunduh paket instalasi dari internet tersedia sejak awal beroperasi.
+
+#### Penjelasan & Konfigurasi
+
+
+Setiap node non-router menambahkan `192.168.122.1` sebagai resolver DNS di `/etc/resolv.conf`, agar dapat menerjemahkan nama domain ke alamat IP saat mengakses internet. 
+
+```
+#!/bin/bash
+echo "nameserver 192.168.122.1" > /etc/resolv.conf
+```
+
+Script ini dijalankan di seluruh 12 node non-router (alpha, beta, gamma, delta, epsilon, abbey, penny, prab, tedd, obladi, desmond, oblada, molly). 
+
+
+#### Bukti Routing Antar-Segmen Berfungsi
+![](images/03-routing.png)
+
+
+#### Bukti Resolver Berfungsi
+![](images/03-resolver.png)
 
 ---
 
 ### 4. Konfigurasi DNS Authoritative
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+
+#### Soal
+- Pada node **prab**, bangun zona `<xxxx>.com` sebagai *authoritative* dengan SOA menunjuk ke `prab.<xxxx>.com`, serta tambahkan catatan NS untuk `prab.<xxxx>.com` dan `tedd.<xxxx>.com`. 
+
+- Buat A record untuk `prab.<xxxx>.com` dan `tedd.<xxxx>.com` yang mengarah ke alamat IP mereka masing-masing, serta A record apex `<xxxx>.com` yang mengarah ke gerbang aplikasi dinamis (**penny**). 
+
+- Aktifkan fitur *notify* dan `allow-transfer` ke **tedd**, lalu set *forwarders* ke `192.168.122.1`. Di node **tedd**, tarik zona `<xxxx>.com` dari master dan pastikan server menjawab secara *authoritative*. 
+
+- Setelah fondasi nama ini berdiri kokoh, perbarui urutan resolver pada seluruh Entitas non-router menjadi: IP **prab**, IP **tedd**, lalu `192.168.122.1`. Verifikasi bahwa query ke domain apex maupun hostname di dalam zona dijawab dengan benar oleh **prab** atau **tedd**.
+
+#### Penjelasan & Konfigurasi
+
+Domain yang digunakan untuk kelompok ini adalah `k07.com`. Node prab berperan sebagai DNS master (authoritative), sedangkan tedd sebagai slave yang menarik salinan zona dari prab melalui mekanisme zone transfer.
+
+
+##### Prab
+
+Agar tedd otomatis menerima pembaruan zona dan dapat melakukan zone transfer, prab diaktifkan fitur `notify` dan `allow-transfer` yang mengizinkan IP tedd (`10.67.1.3`). Forwarders diarahkan ke `192.168.122.1` agar prab tetap dapat meneruskan query domain di luar zona `k07.com` ke internet publik.
+```bash
+
+#!/bin/bash
+command -v named >/dev/null || { apt update && apt install -y bind9 bind9utils dnsutils; }
+mkdir -p /run/named
+chown bind:bind /run/named
+
+# prab dan tedd memiliki config named.conf.options yang sama, hanya berbeda di named.conf.local (master vs slave)
+cat > /etc/bind/named.conf.options <<'OPT'
+options {
+	directory "/var/cache/bind";
+	forwarders { 192.168.122.1; };
+	recursion yes;
+	allow-query { any; };
+	dnssec-validation no;
+};
+OPT
+
+cat > /etc/bind/named.conf.local <<'LOC'
+zone "k07.com" {
+    type master;
+    file "/etc/bind/db.k07.com";
+    notify yes;
+    also-notify { 10.67.1.3; };
+    allow-transfer { 10.67.1.3; };
+};
+LOC
+```
+
+Domain kelompok ini adalah `k07.com`. Zona dibangun di node **prab** sebagai master, dengan SOA menunjuk ke `prab.k07.com`, dua catatan NS (`prab` dan `tedd`), serta A record untuk `prab`, `tedd`, dan apex `k07.com` yang diarahkan ke **penny** (`10.67.5.2`) sebagai gerbang aplikasi dinamis.
+
+A record apex (`k07.com`) diarahkan ke **penny** (`10.67.5.2`) karena penny berperan sebagai gerbang aplikasi dinamis sesuai instruksi soal.
+```bash
+cat > /etc/bind/db.k07.com <<'ZONE'
+$TTL 604800
+@   IN  SOA prab.k07.com. admin.k07.com. (
+        2       ; serial
+        30      ; refresh
+        10      ; retry
+        2419200 ; expire
+        604800 ) ; minimum
+@        IN  NS  prab.k07.com.
+@        IN  NS  tedd.k07.com.
+prab     IN  A   10.67.1.2
+tedd     IN  A   10.67.1.3
+@        IN  A   10.67.5.2
+ZONE
+
+pkill -9 named 2>/dev/null
+sleep 1
+named -u bind
+
+```
+
+##### Tedd
+
+
+```bash
+zone "k07.com" {
+	type slave;
+	file "/var/cache/bind/db.k07.com";
+	masters { 10.67.1.2; };
+};
+```
+
+Setelah prab dan tedd terbukti menjawab secara authoritative, urutan resolver pada seluruh node non-router diperbarui menjadi: IP prab, IP tedd, lalu `192.168.122.1`.
+
+```bash
+#!/bin/bash
+cat > /etc/resolv.conf <<'RSV'
+nameserver 10.67.1.2
+nameserver 10.67.1.3
+nameserver 192.168.122.1
+```
+
+#### Bukti Zone Transfer Berhasil (tedd menjawab authoritative)
+![](images/04-aa-flag.png)
+(hasil `dig @10.67.1.3 k07.com`, flag `aa` menunjukkan tedd menjawab secara authoritative)
+
 
 ---
 
 ### 5. Konfigurasi Hostname Entitas
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+#### Soal
+Namai semua Entitas (hostname) sesuai glosarium: rootkit, alpha, beta, gamma, delta, epsilon, prab, tedd, abbey, penny, obladi, desmond, oblada, molly, dan verifikasi bahwa setiap host mengenali hostname tersebut secara system-wide. Buat setiap domain untuk masing-masing node sesuai dengan namanya (contoh: alpha.<xxxx>.com) dan assign IP masing-masing juga. Lakukan pengecualian untuk node yang bertanggung jawab atas prab dan tedd.
+
+#### Penjelasan & Konfigurasi
+Agar setiap Entitas memiliki domain sesuai namanya (<nama>.k07.com) yang dapat di-resolve ke IP masing-masing, file zona `db.k07.com` pada node prab diperbarui dengan menambahkan A record untuk seluruh 12 node tambahan (di luar prab, tedd, dan apex yang sudah terdaftar di bagian 4). Nomor serial pada SOA dinaikkan (dari 1 menjadi 2) agar perubahan ini ditarik ulang oleh tedd melalui mekanisme zone transfer.
+
+```bash
+cat > /etc/bind/db.k07.com <<'ZONE'
+$TTL 604800
+@   IN  SOA prab.k07.com. admin.k07.com. (
+        2       ; serial
+        30      ; refresh
+        10      ; retry
+        2419200 ; expire
+        604800 ) ; minimum
+@        IN  NS  prab.k07.com.
+@        IN  NS  tedd.k07.com.
+prab     IN  A   10.67.1.2
+tedd     IN  A   10.67.1.3
+@        IN  A   10.67.5.2
+rootkit  IN  A   10.67.1.1
+obladi   IN  A   10.67.1.4
+desmond  IN  A   10.67.1.5
+oblada   IN  A   10.67.1.6
+molly    IN  A   10.67.1.7
+abbey    IN  A   10.67.4.2
+penny    IN  A   10.67.5.2
+alpha    IN  A   10.67.6.2
+beta     IN  A   10.67.6.3
+gamma    IN  A   10.67.6.4
+delta    IN  A   10.67.7.2
+epsilon  IN  A   10.67.7.3
+ZONE
+
+EOF
+```
+
+**Contoh Node Non-Router Alpha**
+```bash
+#!/bin/bash
+hostname alpha
+echo alpha > /etc/hostname
+grep -v -w alpha /etc/hosts > /tmp/h; cat /tmp/h > /etc/hosts
+echo "10.67.6.2 alpha.k07.com alpha" >> /etc/hosts
+```
+Konfigurasi yang sama diulang pada 12 node lainnya (rootkit, beta, gamma, delta, epsilon, abbey, penny, obladi, desmond, oblada, molly), hanya mengganti nilai `hostname` dan pasangan IP masing-masing.
+
+#### Bukti Hostname Dikenali System-Wide
+![](images/05-hostname.png)
+
+#### Bukti Resolusi DNS per Hostname
+![](images/05-domain.png)
 
 ---
 
@@ -576,27 +771,293 @@ Pengujian dilakukan melalui hostname dari klien eksternal/internal:
 ---
 
 ### 11. Konfigurasi Reverse Proxy
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+#### Soal
+Konfigurasikan Penny (menggunakan Apache) sebagai reverse proxy yang mengarah ke semua node di area vault (Obladi & Desmond). Sementara itu, konfigurasikan Abbey (menggunakan Nginx) sebagai reverse proxy menuju area core (Oblada & Molly). Pastikan kedua gerbang ini meneruskan identitas asli pengunjung ke server backend dengan melakukan forwarding header Host dan X-Real-IP. Buktikan bahwa Penny dan Abbey berhasil mendistribusikan lalu lintas dengan tepat.
+
+#### Penjelasan & Konfigurasi
+
+
+#### Soal
+Konfigurasikan Penny (menggunakan Apache) sebagai reverse proxy yang mengarah ke semua node di area vault (Obladi & Desmond). Sementara itu, konfigurasikan Abbey (menggunakan Nginx) sebagai reverse proxy menuju area core (Oblada & Molly). Pastikan kedua gerbang ini meneruskan identitas asli pengunjung ke server backend dengan melakukan forwarding header Host dan X-Real-IP. Buktikan bahwa Penny dan Abbey berhasil mendistribusikan lalu lintas dengan tepat.
+
+#### Penjelasan & Konfigurasi
+
+**Konfigurasi Penny** `/root/penny.sh/`
+
+```bash
+<VirtualHost *:80>
+    ServerName www.k07.com
+    ProxyPreserveHost On
+
+    ProxyPass / balancer://vaultcluster/
+    ProxyPassReverse / balancer://vaultcluster/
+    <Proxy balancer://vaultcluster>
+        BalancerMember http://10.67.1.4
+        BalancerMember http://10.67.1.5
+    </Proxy>
+
+    RequestHeader set X-Real-IP "expr=%{REMOTE_ADDR}"
+    RequestHeader set X-Forwarded-For "expr=%{REMOTE_ADDR}"
+</VirtualHost>
+```
+
+**Konfigurasi Abbey** `/root/abbey.sh`
+
+```nginx
+upstream corecluster {
+    server 10.67.1.6;
+    server 10.67.1.7;
+}
+server {
+    listen 80;
+    server_name static.k07.com;
+    location / {
+        proxy_pass http://corecluster;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Pada Penny, directive `ProxyPreserveHost On` memastikan header `Host` asli (`www.k07.com`) diteruskan apa adanya ke backend. Directive `RequestHeader set X-Real-IP` menambahkan IP client asli ke setiap request sebelum diteruskan ke anggota balancer. Pada Abbey, hal yang sama dicapai melalui `proxy_set_header Host $host` dan `proxy_set_header X-Real-IP $remote_addr`.
+
+#### Verifikasi Distribusi Lalu Lintas
+
+Pengujian dilakukan dengan mengirim beberapa request berurutan dari node client (alpha) ke masing-masing gerbang, untuk membuktikan traffic terdistribusi ke lebih dari satu backend.
+
+```bash
+for i in 1 2 3 4 5 6; do curl -s http://static.k07.com/; echo; done
+```
+![](images/11-rr.png)
+
+(Response bergantian antara Oblada dan Molly, membuktikan Nginx upstream mendistribusikan request secara round-robin ke kedua backend area core)
+
+```bash
+for i in 1 2 3 4 5 6; do curl -s http://www.k07.com/ -o /dev/null -w "%{http_code}\n"; done
+```
+![](images/11-vault.png)
+(Keenam request ke `www.k07.com` mengembalikan status `200 OK`, membuktikan proxy Apache ke area vault (Obladi dan Desmond) berhasil meneruskan traffic tanpa error.)
 
 ---
 
 ### 12. Basic Authentication pada Path admin
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+
+#### Soal
+Terdapat ruang khusus di penny yang menyimpan dokumen rahasia sindikat, oleh karena itu terapkan perlindungan basic authentication untuk path /admin. Akses ke jalur tersebut harus menolak pengunjung tanpa kredensial, dan hanya mengizinkan masuk jika menggunakan credential berikut: username `prabs`, password `pakar_pinter_jadi_gob***.`
+
+#### Penjelasan & Konfigurasi
+**Konfigurasi Penny** `(tambahan pada vhost www.k07.com)`
+
+```bash
+    ProxyPass /admin !
+
+    <Location /admin>
+        AuthType Basic
+        AuthName "Restricted Area"
+        AuthUserFile /etc/apache2/.htpasswd
+        Require valid-user
+    </Location>
+```
+
+Baris ProxyPass /admin ! mengecualikan path /admin dari reverse proxy, sehingga permintaan ke path ini diproses langsung oleh Penny, bukan diteruskan ke backend vault. File kredensial dibuat dengan htpasswd:
+
+```bash
+htpasswd -cb /etc/apache2/.htpasswd prabs 'pakar_pinter_jadi_gob***'
+```
+
+#### Verifikasi
+Verifikasi dapat dilakukan dengan
+```bash
+curl -I http://www.k07.com/admin/
+curl -u prabs:'pakar_pinter_jadi_gob***' -I http://www.k07.com/admin/
+```
+
+#### Hasil Pengujian Tanpa Kredensial & dengan Kredensial
+
+![](images/12-creds.png)
+(Terlihat bahwa tanpa kredensial, server merespon `401 Unauthorized`, sedangkan dengan kredensial yang benar, server merespon `200 OK`.)
+
+Sehingga, dengan kredensial yang tepat, kita dapat mengakses isi content-type di dalamnya.
+
+![](images/12-tedprab.png)
 
 ---
 
 ### 13. Redirect Otomatis Menuju Nama Kanonik
-*(Dikerjakan oleh Keisya Dira Anugerah)*
 
+#### Soal
+
+Setiap entitas dari luar harus memanggil gerbang dengan nama kanoniknya. Jika ada yang mencoba mengakses IP penny dan domain `penny.xxx.com`, paksa sistem untuk melakukan redirect secara permanen (status code `301`) menuju `www.xxx.com`. Sebaliknya, jika ada yang mengakses IP abbey dan domain `abbey.xxx.com`, lakukan redirect sementara (status code `302`) menuju `static.xxx.com`.
+
+#### Penjelasan & Konfigurasi
+**Konfigurasi Penny** 
+
+```bash
+<VirtualHost *:80>
+    ServerName penny.k07.com
+    Redirect permanent / http://www.k07.com/
+</VirtualHost>
+```
+Vhost ini ditempatkan sebagai vhost pertama pada file konfigurasi sehingga menjadi default vhost. Akses melalui IP langsung maupun domain `penny.k07.com` tertangkap oleh blok ini dan dialihkan.
+
+**Konfigurasi Abbey** 
+
+```bash
+server {
+    listen 80 default_server;
+    server_name abbey.k07.com _;
+    return 302 http://static.k07.com$request_uri;
+}
+```
+Directive `default_server `menangkap seluruh request yang tidak cocok dengan server_name lain (termasuk akses via IP), lalu dialihkan ke `static.k07.com`.
+
+#### Hasil Pengujian & Bukti
+
+Dengan menggunakan langkah verifikasi:
+```bash
+curl -I http://penny.k07.com/
+curl -I http://10.67.5.2/
+curl -I http://www.k07.com/
+curl -I http://abbey.k07.com/
+curl -I http://10.67.4.2/
+curl -I http://static.k07.com/
+```
+
+menghasilkan output sebagai berikut:
+| URL | Status Code |
+|-----|-------------|
+| http://penny.k07.com/ | 301 |
+| http://10.67.5.2/ | 301 |
+| http://www.k07.com/ | 200 |
+| http://abbey.k07.com/ | 302 |
+| http://10.67.4.2/ | 302 |
+| http://static.k07.com/ | 200 |
+
+#### Bukti Redirect 301 pada Penny
+![](images/13-penny.png)
+
+#### Bukti Redirect 302 pada Abbey
+![](images/13-abbey.png)
 ---
 
 ### 14. Pencatatan IP Asli Client pada Access Log
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+#### Soal
+Di dalam The Mesh, rekam jejak tidak boleh dipalsukan oleh sistem. Pastikan access log pada setiap server web di area vault maupun area core mencatat alamat IP asli milik client (pengunjung) yang diteruskan oleh gerbang, dan bukan mencatat IP dari Penny ataupun Abbey.
+
+#### Penjelasan & Konfigurasi
+Karena seluruh traffic ke area vault dan area core melewati reverse proxy, access log pada backend secara default hanya mencatat IP milik proxy. Hal ini diperbaiki dengan memodifikasi format log pada tiap backend agar membaca header X-Real-IP yang diteruskan gerbang.
+
+**Backend Apache `(Obladi & Desmond)`**
+```bash
+cat > /etc/apache2/sites-available/000-default.conf <<CONF
+<VirtualHost *:80>
+    ServerAdmin webmaster@k07.com
+    ServerName ${DOMAIN_SELF}
+    ServerAlias ${DOMAIN_ALIAS}
+    DocumentRoot /var/www/html
+
+    <Directory /var/www/html/arsip>
+        Options +Indexes
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    # Format log untuk mencatat IP asli client
+    LogFormat "%{X-Real-IP}i %l %u %t \"%r\" %>s %O \"%{Referer}i\" \"%{User-Age                                                                                                             nt}i\"" realip_combined
+    ErrorLog \${APACHE_LOG_DIR}/error.log
+    CustomLog \${APACHE_LOG_DIR}/access.log realip_combined
+</VirtualHost>
+CONF
+
+
+```
+
+**Backend Nginx `(Oblada & Molly)`**
+```bash
+log_format realip '$http_x_real_ip - $remote_user [$time_local] '
+                   '"$request" $status $body_bytes_sent '
+                   '"$http_referer" "$http_user_agent"';
+access_log /var/log/nginx/access.log realip;
+```
+
+#### Verifikasi
+
+```bash
+curl http://www.k07.com/ > /dev/null
+curl http://static.k07.com/ > /dev/null
+```
+
+Dilakukan dari node gamma `(10.67.6.3)`. Kemudian diperiksa access log pada backend:
+
+#### IP tercatat di access log 
+![](images/14-client.png)
+
+Terlihat bahwa Obladi/Desmond (`/var/log/apache2/access.log`) dan Oblada/Molly (`/var/log/nginx/access.log`) mencatat IP asli dari node gamma `(10.67.6.3)`
 
 ---
 
 ### 15. Jalur Proxy Khusus Eternal dan Orion
-*(Dikerjakan oleh Keisya Dira Anugerah)*
+#### Soal
+Rootkit menginstruksikan pembuatan jalur proxy khusus yang berdiri sendiri. Pada penny buat reverse proxy untuk path `/eternal` yang menyajikan directory `/var/www/eternal`, dan pastikan path ini dapat mengeksekusi (rendering) file php. Pada abbey, buat jalur `/orion` yang menyajikan directory `/var/www/orion`, secara murni statis tanpa perlu rendering php.
+
+#### Penjelasan & Konfigurasi
+**Konfigurasi Penny (tambahan pada vhost)**
+
+```bash
+    ProxyPass /eternal !
+
+    Alias /eternal /var/www/eternal
+    <Directory /var/www/eternal>
+        Options -Indexes
+        AllowOverride None
+        Require all granted
+        DirectoryIndex index.php
+    </Directory>
+```
+
+```php
+<?php
+echo "<h1>Eternal Path - PENNY</h1>";
+echo "<p>PHP works. Time: " . date("Y-m-d H:i:s") . "</p>";
+?>
+```
+
+**Konfigurasi Abbey (tambahan pada vhost)**
+```nginx
+server {
+    listen 80;
+    server_name static.k07.com;
+
+    location /orion {
+        alias /var/www/orion;
+        autoindex off;
+        location ~ \.php$ {
+            deny all;
+        }
+    }
+
+```
+```html
+mkdir -p /var/www/orion
+cat > /var/www/orion/index.html <<'HTML'
+<h1>Orion Path - ABBEY</h1>
+<p>Static only, no PHP rendering.</p>
+HTML
+
+```
+Blok location `~\.php$ { deny all; }` memastikan file berekstensi .php yang diletakkan di `/var/www/orion` tidak dieksekusi maupun diakses.
+
+#### Verifikasi
+- **Bukti /eternal Berhasil Merender PHP**
+![](images/15-eternal.png)
+
+- **Bukti /orion Statis Tanpa Rendering PHP**
+![](images/15-orion.png)
+
+- **Bukti bahwa file PHP di `/orion` tidak dieksekusi**
+![](images/15-403.png)
+
+
 
 ---
 
