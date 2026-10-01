@@ -1,0 +1,25 @@
+auto eth1
+iface eth1 inet static
+	address 10.67.1.1
+	netmask 255.255.255.0
+        up sh /root/init.sh
+
+auto eth2
+iface eth2 inet static
+	address 10.67.4.1
+	netmask 255.255.255.0
+
+auto eth3
+iface eth3 inet static
+	address 10.67.5.1
+	netmask 255.255.255.0
+
+auto eth4
+iface eth4 inet static
+	address 10.67.6.1
+	netmask 255.255.255.0
+
+auto eth5
+iface eth5 inet static
+	address 10.67.7.1
+	netmask 255.255.255.0
